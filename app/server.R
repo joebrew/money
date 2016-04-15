@@ -6,18 +6,28 @@
 #
 
 library(shiny)
+source('read_in.R')
+rm(item)
+
+# Set a random starting seed
+set.seed(as.numeric(Sys.time()))
 
 shinyServer(function(input, output) {
-
-  output$distPlot <- renderPlot({
-
-    # generate bins based on input$bins from ui.R
-    x    <- faithful[, 2]
-    bins <- seq(min(x), max(x), length.out = input$bins + 1)
-
-    # draw the histogram with the specified number of bins
-    hist(x, breaks = bins, col = 'darkgray', border = 'white')
-
+  
+  item <- reactive ({
+    if(input$button == 0)
+    {
+    return()
+    }
+    isolate({   
+      recent$name[sample(1:nrow(recent), 1)]
+    })
+    
   })
+  output$pw <- renderPrint({item()})
 
+  output$plot1 <- renderPlot({
+    hist(df$value)
+    abline(v = input$dollars)
+  })
 })
