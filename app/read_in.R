@@ -54,3 +54,14 @@ recent <- df %>%
   group_by(name) %>%
   summarise(value = mean(value, na.rm = TRUE))
 
+# Remove the non applicable stuff
+recent <- recent[!recent$name %in% 
+                   c('Electricity per KWH',
+                     'Fuel oil #2 per gallon (3.785 liters)'),]
+
+# Remove weird things from names
+recent$name <- 
+  gsub(', all sizes|, 33-80 oz. pkg|, any origin|, dry pint|, all sizes',
+       '',
+       recent$name)
+

@@ -14,6 +14,7 @@ set.seed(as.numeric(Sys.time()))
 
 shinyServer(function(input, output) {
   
+  # Re-generated item
   item <- reactive ({
     if(input$button == 0)
     {
@@ -24,10 +25,25 @@ shinyServer(function(input, output) {
     })
     
   })
-  output$pw <- renderPrint({item()})
-
-  output$plot1 <- renderPlot({
-    hist(df$value)
-    abline(v = input$dollars)
+  
+  # Equivalent converter
+  output$equivalent <- renderText({
+    # Get the item
+    if(input$button == 0){
+      x <- recent$name[sample(1:nrow(recent), 1)]
+    } else {
+      x <- item()
+    }
+    
+    # Get the value of the item
+    value <- recent$value[grepl(x, recent$name)]
+    # Divide the amount of money by the value
+    divided <- as.numeric(input$dollars) / value
+    # Convert to text
+    out <- paste0(round(divided, digits = 2),
+                  ' pounds of ', 
+                  tolower(x))
+    
   })
+
 })

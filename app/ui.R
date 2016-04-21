@@ -3,11 +3,10 @@ shinyUI(fluidPage(
   fluidRow(
     column(3, wellPanel(
       textInput("dollars", "Dollars", value = 100),
-      actionButton("button", "Get Data")
+      actionButton("button", "Change item")
     )),
     column(6,
-           textOutput('pw'),
-           plotOutput("plot1", width = 400, height = 300)    
-           )
+           # textOutput('pw'),
+           h3(textOutput('equivalent')))
   )
 ))
