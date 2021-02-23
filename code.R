@@ -81,12 +81,19 @@ the_title <- long %>% ungroup %>% dplyr::filter(date == max(date)) %>%
                     scales::comma(round(debt)), ' USD in debt)')) %>%
   .$x
 
+long$grp <- factor(long$grp, 
+                   levels = rev(unique(c('bitcoin', 'ethereum',
+                                     'stocks', 'campus', long$grp))))
+
 ggplot(data = long,
        aes(x = date,
            y = usd,
            group = grp,
            fill = grp)) +
   geom_area(position = 'stack') +
+  # geom_bar(position = position_stack(),
+  #          stat = 'identity',
+  #          width = 1) +
   scale_fill_manual(name = '',
                     values = RColorBrewer::brewer.pal(n = length(unique(long$grp)), 'Set1')) +
   geom_hline(yintercept = 0) +
@@ -105,7 +112,8 @@ ggplot(data = total,
   geom_point(size = 15, alpha = 0.5) +
   geom_line() +
   geom_text(aes(label = round(usd)),
-             color = 'white') +
+             color = 'white',
+            angle = 90) +
   theme_bw()
 total
 
@@ -117,11 +125,12 @@ crypto_title <- crypto %>% ungroup %>% dplyr::filter(date == max(date)) %>%
   summarise(assets = sum(usd[usd > 0])) %>%
   mutate(x =  paste0(scales::comma(round(assets)), ' USD in crypto')) %>%
   .$x
-crypto_min <- crypto %>% ungroup %>% dplyr::filter(date == min(date[usd > 0])) %>%
-  summarise(assets = sum(usd[usd > 0])) %>%
-  mutate(x =  paste0('(', scales::comma(round(assets)), ' USD purchased)')) %>%
-  .$x
-crypto_title <- paste0(crypto_title, ' ', crypto_min)
+# crypto_min <- crypto %>% ungroup %>% group_by(grp) %>%
+#   dplyr::filter(date == min(date[usd > 0])) %>%
+#   summarise(assets = sum(usd[usd > 0])) %>%
+#   mutate(x =  paste0('(', scales::comma(round(assets)), ' USD purchased)')) %>%
+#   .$x
+# crypto_title <- paste0(crypto_title, ' ', crypto_min)
 ggplot(data = crypto,
        aes(x = date,
            y = usd,
