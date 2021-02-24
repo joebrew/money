@@ -48,15 +48,16 @@ eur_to_usd_columns <- c('caixa',
                         'transferwise_business_eur',
                         'transferwise_personal_eur',
                         'cash_eur',
-                        'debt_eur')
+                        'debt_eur',
+                        'coinbase_eur')
 for(this_column in eur_to_usd_columns){
   df[,this_column] <- df[,this_column] / df$eur
 }
-btc_to_usd_columns <- c('bitcoin')
+btc_to_usd_columns <- c('btc_trezor', 'btc_coinbase')
 for(this_column in btc_to_usd_columns){
   df[,this_column] <- df[,this_column] * df$btc
 }
-eth_to_usd_columns <- c('ethereum')
+eth_to_usd_columns <- c('eth_trezor', 'eth_coinbase')
 for(this_column in eth_to_usd_columns){
   df[,this_column] <- df[,this_column] * df$eth
 }
@@ -82,7 +83,7 @@ the_title <- long %>% ungroup %>% dplyr::filter(date == max(date)) %>%
   .$x
 
 long$grp <- factor(long$grp, 
-                   levels = rev(unique(c('bitcoin', 'ethereum',
+                   levels = rev(unique(c('btc', 'eth',
                                      'stocks', 'campus', long$grp))))
 
 ggplot(data = long,
@@ -119,7 +120,7 @@ total
 
 # Crypto only
 crypto <- long %>%
-  filter(grp %in% c('bitcoin', 'ethereum'))
+  filter(grp %in% c('btc', 'eth'))
 
 crypto_title <- crypto %>% ungroup %>% dplyr::filter(date == max(date)) %>%
   summarise(assets = sum(usd[usd > 0])) %>%
@@ -145,3 +146,8 @@ ggplot(data = crypto,
   labs(x = 'Date',
        y = 'USD',
        title = crypto_title)
+
+crypto_agg <- crypto %>%
+  group_by(date) %>%
+  summarise(usd = sum(usd))
+tail(crypto_agg)
