@@ -2,7 +2,7 @@ library(RColorBrewer)
 library(tidyverse)
 library(gsheet)
 library(yaml)
-
+today <- Sys.Date() +1
 creds <- yaml::yaml.load_file('credentials.yaml')
 google_url <- creds$google_url
 
@@ -18,7 +18,7 @@ fx <- fx %>% dplyr::select(Date, Rate)
 names(fx) <- c('date', 'eur')
 fx <- fx %>% arrange(date)
 left <- data_frame(date = seq(min(fx$date),
-                              Sys.Date(),
+                              today,
                               by = 1))
 fx <- left_join(left, fx, by = 'date')
 fx <- fx %>% arrange(date)
@@ -26,7 +26,7 @@ fx <- fx %>% tidyr::fill(eur, .direction = 'down')
 
 bx <- bx %>% dplyr::select(date = Date, btc = Last)
 left <- data_frame(date = seq(min(bx$date),
-                              Sys.Date(),
+                              today,
                               by = 1))
 bx <- left_join(left, bx, by = 'date')
 bx <- bx %>% arrange(date)
@@ -34,7 +34,7 @@ bx <- bx %>% tidyr::fill(btc, .direction = 'down')
 
 ex <- ex %>% dplyr::select(date = Date, eth = Last)
 left <- data_frame(date = seq(min(ex$date),
-                              Sys.Date(),
+                              today,
                               by = 1))
 ex <- left_join(left, ex, by = 'date')
 ex <- ex %>% arrange(date)
@@ -110,28 +110,62 @@ total <- long %>%
 ggplot(data = total,
        aes(x = date,
            y = usd)) +
-  geom_point(size = 15, alpha = 0.5) +
+  geom_point(size = 1, alpha = 0.5) +
   geom_line() +
   geom_text(aes(label = round(usd)),
-             color = 'white',
-            angle = 90) +
-  theme_bw()
+             color = 'black',
+            angle = 90,
+            nudge_y = 400,
+            size = 3) +
+  theme_bw() +
+  labs(title = 'NET total (including debt)')
 total
+
+# Crypto purchases
+crypto_purchases <- gsheet::gsheet2tbl('https://docs.google.com/spreadsheets/d/1uQQqM9odKqLf_o6oJsK_-JNSOu34yebTfZ1fYzp1Es8/edit#gid=1674910204')
+crypto_purchases_pro <- gsheet::gsheet2tbl('https://docs.google.com/spreadsheets/d/1uQQqM9odKqLf_o6oJsK_-JNSOu34yebTfZ1fYzp1Es8/edit#gid=1497580685')
+
+# buys only
+crypto_purchases <- crypto_purchases %>% filter(`Transaction Type` == 'Buy')
+x <- crypto_purchases_pro %>%
+  filter(type %in% c('match', 'fee')) %>%
+  group_by(date = as.Date(time), 
+           `trade id`) %>%
+  summarise(euros_spent = abs(sum(amount[`amount/balance unit` == 'EUR' & type == 'match'])),
+            btc = sum(amount[`amount/balance unit` == 'BTC' & type == 'match']),
+            fee = abs(sum(amount[type == 'fee']))) %>%
+  left_join(fx) %>%
+  mutate(usd_spent = euros_spent / eur,
+         fees_spent = fee / eur)
+
+# Get total amount spent
+crypto_purchases_summary <- crypto_purchases %>%
+  summarise(usd = sum(`USD Subtotal`),
+            usd_with_fees = sum(`USD Total (inclusive of fees)`,
+                                fees = sum(`USD Fees`))) %>%
+  bind_rows(
+    x %>% ungroup %>%
+      summarise(usd = sum(usd_spent),
+                usd_with_fees = sum(fees_spent + usd_spent))
+  ) %>%
+  summarise(usd = sum(usd),
+            usd_with_fees = sum(usd_with_fees))
 
 # Crypto only
 crypto <- long %>%
   filter(grp %in% c('btc', 'eth'))
 
-crypto_title <- crypto %>% ungroup %>% dplyr::filter(date == max(date)) %>%
+  crypto_title <- crypto %>% ungroup %>% dplyr::filter(date == max(date)) %>%
   summarise(assets = sum(usd[usd > 0])) %>%
   mutate(x =  paste0(scales::comma(round(assets)), ' USD in crypto')) %>%
   .$x
-# crypto_min <- crypto %>% ungroup %>% group_by(grp) %>%
-#   dplyr::filter(date == min(date[usd > 0])) %>%
-#   summarise(assets = sum(usd[usd > 0])) %>%
-#   mutate(x =  paste0('(', scales::comma(round(assets)), ' USD purchased)')) %>%
-#   .$x
-# crypto_title <- paste0(crypto_title, ' ', crypto_min)
+
+
+
+crypto_title <- paste0(crypto_title, ' (originally purchased:',
+                       round(crypto_purchases_summary$usd),
+                       ', ',
+                       round(crypto_purchases_summary$usd_with_fees), ' with fees)')
 ggplot(data = crypto,
        aes(x = date,
            y = usd,
@@ -147,7 +181,26 @@ ggplot(data = crypto,
        y = 'USD',
        title = crypto_title)
 
+ggplot(data = crypto,
+       aes(x = date,
+           y = usd,
+           group = grp,
+           color = grp)) +
+  geom_line() +
+  facet_wrap(~grp) +
+  scale_color_manual(name = '',
+                    values = RColorBrewer::brewer.pal(n = length(unique(crypto$grp)), 'Set1')) +
+  geom_hline(yintercept = 0) +
+  theme_bw() +
+  theme(legend.position = 'none') +
+  labs(x = 'Date',
+       y = 'USD',
+       title = crypto_title)
+
+crypto %>% tidyr::spread(key = grp, value = usd)
+
 crypto_agg <- crypto %>%
   group_by(date) %>%
   summarise(usd = sum(usd))
 tail(crypto_agg)
+  
