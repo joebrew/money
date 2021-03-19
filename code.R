@@ -10,11 +10,13 @@ original_df <- df <- gsheet::gsheet2tbl(google_url)
 
 # Get currency
 Quandl::Quandl.auth(creds$quandl_api_key)
-fx <- Quandl::Quandl('CURRFX/USDEUR')
-bx <- Quandl::Quandl('BITSTAMP/USD')
+fx <- Quandl::Quandl('ECB/EURUSD')
+original_bx <- bx <- Quandl::Quandl('BITSTAMP/USD')
 ex <- Quandl::Quandl('BITFINEX/ETHUSD')
 
-fx <- fx %>% dplyr::select(Date, Rate)
+
+
+fx <- fx %>% dplyr::select(Date, Rate = Value)
 names(fx) <- c('date', 'eur')
 fx <- fx %>% arrange(date)
 left <- data_frame(date = seq(min(fx$date),
@@ -51,7 +53,7 @@ eur_to_usd_columns <- c('caixa',
                         'debt_eur',
                         'coinbase_eur')
 for(this_column in eur_to_usd_columns){
-  df[,this_column] <- df[,this_column] / df$eur
+  df[,this_column] <- df[,this_column] * df$eur
 }
 btc_to_usd_columns <- c('btc_trezor', 'btc_coinbase')
 for(this_column in btc_to_usd_columns){
@@ -136,8 +138,8 @@ x <- crypto_purchases_pro %>%
             eth = sum(amount[`amount/balance unit` == 'ETH' & type == 'match']),
             fee = abs(sum(amount[type == 'fee']))) %>%
   left_join(fx) %>%
-  mutate(usd_spent = euros_spent / eur,
-         fees_spent = fee / eur)
+  mutate(usd_spent = euros_spent * eur,
+         fees_spent = fee * eur)
 
 # Get total amount spent
 crypto_purchases_summary <- crypto_purchases %>%
