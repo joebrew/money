@@ -2,6 +2,7 @@ library(RColorBrewer)
 library(tidyverse)
 library(gsheet)
 library(yaml)
+library(jsonlite)
 today <- Sys.Date() +1
 creds <- yaml::yaml.load_file('credentials.yaml')
 google_url <- creds$google_url
@@ -14,6 +15,17 @@ fx <- Quandl::Quandl('ECB/EURUSD')
 original_bx <- bx <- Quandl::Quandl('BITSTAMP/USD')
 ex <- Quandl::Quandl('BITFINEX/ETHUSD')
 
+# # Cardano / ADA
+# json_file <- 'https://datahub.io/cryptocurrency/cardano/datapackage.json'
+# json_data <- suppressWarnings(fromJSON(paste(readLines(json_file), collapse="")))
+# # print all tabular data(if exists any)
+# for(i in 1:length(json_data$resources$datahub$type)){
+#   if(json_data$resources$datahub$type[i]=='derived/csv'){
+#     p ath_to_file = json_data$resources$path[i]
+#     data <- read.csv(url(path_to_file))
+#   }
+# }
+# data$date <- as.Date(as.character(data$date))
 
 
 fx <- fx %>% dplyr::select(Date, Rate = Value)
@@ -88,6 +100,12 @@ long$grp <- factor(long$grp,
                    levels = rev(unique(c('btc', 'eth',
                                      'stocks', 'campus', long$grp))))
 cols <- colorRampPalette(RColorBrewer::brewer.pal(n = 8, 'Set1'))(length(unique(long$grp)))
+maxy <- long %>%
+  ungroup %>%
+  filter(grp != 'debt') %>%
+  group_by(date) %>%
+  summarise(usd = sum(usd)) %>%
+  mutate(grp = NA)
 ggplot(data = long,
        aes(x = date,
            y = usd,
@@ -104,7 +122,10 @@ ggplot(data = long,
   theme(legend.position = 'bottom') +
   labs(x = 'Date',
        y = 'USD',
-       title = the_title)
+       title = the_title) +
+  geom_line(data = maxy,
+            aes(x = date,
+                y = usd))
 
 total <- long %>%
   group_by(date) %>%
@@ -124,59 +145,40 @@ ggplot(data = total,
 total
 
 # Crypto purchases
-crypto_purchases <- gsheet::gsheet2tbl('https://docs.google.com/spreadsheets/d/1uQQqM9odKqLf_o6oJsK_-JNSOu34yebTfZ1fYzp1Es8/edit#gid=1674910204')
-crypto_purchases_pro <- gsheet::gsheet2tbl('https://docs.google.com/spreadsheets/d/1uQQqM9odKqLf_o6oJsK_-JNSOu34yebTfZ1fYzp1Es8/edit#gid=1497580685')
+crypto_purchases <- gsheet::gsheet2tbl('https://docs.google.com/spreadsheets/d/1uQQqM9odKqLf_o6oJsK_-JNSOu34yebTfZ1fYzp1Es8/edit#gid=919305238')
 
-# buys only
-crypto_purchases <- crypto_purchases %>% filter(`Transaction Type` == 'Buy')
-x <- crypto_purchases_pro %>%
-  filter(type %in% c('match', 'fee')) %>%
-  group_by(date = as.Date(time), 
-           `trade id`) %>%
-  summarise(euros_spent = abs(sum(amount[`amount/balance unit` == 'EUR' & type == 'match'])),
-            btc = sum(amount[`amount/balance unit` == 'BTC' & type == 'match']),
-            eth = sum(amount[`amount/balance unit` == 'ETH' & type == 'match']),
-            fee = abs(sum(amount[type == 'fee']))) %>%
-  left_join(fx) %>%
-  mutate(usd_spent = euros_spent * eur,
-         fees_spent = fee * eur)
+# Get everything in us
+crypto_purchases <- left_join(crypto_purchases,
+                              fx) 
 
-# Get total amount spent
-crypto_purchases_summary <- crypto_purchases %>%
-  summarise(usd = sum(`USD Subtotal`),
-            usd_with_fees = sum(`USD Total (inclusive of fees)`,
-                                fees = sum(`USD Fees`)),
-            usd_spent_on_btc = sum(`USD Total (inclusive of fees)`[Asset == 'BTC']),
-            usd_spent_on_eth = sum(`USD Total (inclusive of fees)`[Asset == 'ETH'])) %>%
-  bind_rows(
-    x %>% ungroup %>%
-      summarise(usd = sum(usd_spent),
-                usd_with_fees = sum(fees_spent + usd_spent),
-                usd_spent_on_btc = sum(usd_spent[btc > 0]),
-                usd_spent_on_eth = sum(usd_spent[eth > 0]))
-  ) %>%
-  summarise(usd = sum(usd),
-            usd_with_fees = sum(usd_with_fees),
-            usd_spent_on_btc = sum(usd_spent_on_btc),
-            usd_spent_on_eth = sum(usd_spent_on_eth),)
+crypto_purchases <- crypto_purchases %>%
+  mutate(price_usd = ifelse(price_currency == 'EUR',
+                            price * eur,
+                            price)) %>%
+  mutate(fee_usd = ifelse(fee_currency == 'EUR',
+                          fee * eur,
+                          fee))
+# Aggregate
+cp <- crypto_purchases %>%
+  group_by(coin) %>%
+  summarise(quantity = sum(quantity),
+            price_usd = sum(price_usd),
+            fee_usd = sum(fee_usd)) %>%
+# Bring in current prices
+  mutate(date = max(bx$date)) %>%
+  left_join(bx) %>%
+  left_join(ex) %>%
+  # get current value of crypto
+  mutate(value = ifelse(coin == 'BTC', quantity * btc,
+                        ifelse(coin == 'ETH', quantity * eth, NA)))
 
 
-
-# Crypto only
+# Create a title for the crypto chart
+crypto_title <- paste0('Holding ', round(sum(cp$value)), ' USD in crypto (purchased at ',
+                       round(sum(cp$price_usd)), ' + ', round(sum(cp$fee_usd)), ' in fees = ',
+                       round(sum(cp$fee_usd + cp$price_usd)), ')')
 crypto <- long %>%
   filter(grp %in% c('btc', 'eth'))
-
-crypto_title <- crypto %>% ungroup %>% dplyr::filter(date == max(date)) %>%
-  summarise(assets = sum(usd[usd > 0])) %>%
-  mutate(x =  paste0(scales::comma(round(assets)), ' USD in crypto')) %>%
-  .$x
-
-
-
-crypto_title <- paste0(crypto_title, ' (originally purchased:',
-                       round(crypto_purchases_summary$usd),
-                       ', ',
-                       round(crypto_purchases_summary$usd_with_fees), ' with fees)')
 ggplot(data = crypto,
        aes(x = date,
            y = usd,
@@ -230,8 +232,8 @@ right <- df %>%
 hodl <- left_join(hodl, right) %>%
   mutate(btc_value = btc_hodl * btc,
          eth_value = eth_hodl * eth) %>%
-  mutate(btc_spent = crypto_purchases_summary$usd_spent_on_btc) %>%
-  mutate(eth_spent = crypto_purchases_summary$usd_spent_on_eth)
+  mutate(btc_spent = cp$price_usd[cp$coin == 'BTC'] + cp$fee_usd[cp$coin == 'BTC']) %>%
+  mutate(eth_spent = cp$price_usd[cp$coin == 'ETH'] + cp$fee_usd[cp$coin == 'ETH'])
 hodl_text <- paste0(
   'Spent ', round(hodl$eth_spent + hodl$btc_spent, digits = 2) , ' USD on crypto. Now worth: ',
   round(hodl$eth_value + hodl$btc_value, digits = 2), ' USD (',
